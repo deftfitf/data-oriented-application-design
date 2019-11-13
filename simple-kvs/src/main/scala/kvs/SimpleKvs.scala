@@ -1,12 +1,15 @@
 package kvs
 
 import java.io.RandomAccessFile
+import java.nio.charset.Charset
 import java.util.Scanner
 
 import cats.effect.{ExitCode, IO, IOApp, Sync}
 import cats.implicits._
 
 class SimpleKvs(raf: RandomAccessFile) {
+
+  private val charset = Charset.forName("ascii")
 
   private def format(key: String, value: String): String =
     s"$key,$value\n"
@@ -18,17 +21,23 @@ class SimpleKvs(raf: RandomAccessFile) {
 
   def get(key: String): Option[String] = {
     @scala.annotation.tailrec
-    def seek(): Option[String] = {
-      val nextLine = raf.readLine()
-      if (nextLine != null) {
-        val next = nextLine.split(",")
-        if (next(0) == key) Some(next(1))
-        else seek()
-      } else None
-    }
+    def seek(befPos: Long): Option[String] =
+      if (befPos > 0) {
+        var pos = befPos
+        while (pos >= 0 && raf.read() != '\n') {
+          pos -= 1
+          if (pos >= 0) raf.seek(pos)
+        }
 
-    raf.seek(0)
-    seek()
+        raf.seek(pos+1)
+        val line = raf.readLine().split(",")
+
+        if (line(0) == key) Some(line(1))
+        else seek(pos - 1)
+      } else None
+
+    val pos = raf.length() - 1
+    seek(pos)
   }
 
 }
