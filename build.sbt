@@ -6,7 +6,10 @@ ThisBuild / organization     := "com.example"
 ThisBuild / organizationName := "example"
 
 lazy val commonSettings = Seq(
-  libraryDependencies += scalaTest % Test
+  libraryDependencies ++= Seq(
+    "org.typelevel" %% "cats-effect" % "2.0.0",
+    scalaTest % Test
+  )
 )
 
 lazy val root = (project in file("."))
