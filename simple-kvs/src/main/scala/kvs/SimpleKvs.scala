@@ -5,21 +5,24 @@ import java.util.Scanner
 
 import cats.effect.{ExitCode, IO, IOApp, Sync}
 import cats.implicits._
+import scala.collection.mutable
 
-class SimpleKvs(raf: RandomAccessFile) {
+class SimpleKvs(raf: RandomAccessFile, keyIndex: mutable.Map[String, Long]) {
 
   private def format(key: String, value: String): String =
     s"$key,$value\n"
 
   def set(key: String, value: String): Unit = {
-    raf.seek(raf.length())
+    val pos = raf.length()
+    raf.seek(pos)
     raf.writeBytes(format(key, value))
+    keyIndex.update(key, pos)
   }
 
   def get(key: String): Option[String] = {
     @scala.annotation.tailrec
     def seek(befPos: Long): Option[String] =
-      if (befPos > 0) {
+      if (befPos >= 0) {
         var pos = befPos
         while (pos >= 0 && raf.read() != '\n') {
           pos -= 1
@@ -33,8 +36,12 @@ class SimpleKvs(raf: RandomAccessFile) {
         else seek(pos - 1)
       } else None
 
-    val pos = raf.length() - 1
-    seek(pos)
+    keyIndex.get(key) match {
+      case Some(pos) => seek(pos)
+      case None =>
+        val pos = raf.length() - 1
+        seek(pos)
+    }
   }
 
 }
@@ -50,7 +57,7 @@ object SimpleKvs extends IOApp {
         s"can not initialize db file. ${file.getAbsolutePath}")
 
     val raf = new java.io.RandomAccessFile(file, "rw")
-    new SimpleKvs(raf)
+    new SimpleKvs(raf, mutable.Map.empty)
   }
 
   def simpleKvs[F[_]: Sync](databaseFileName: String): F[SimpleKvs] =
