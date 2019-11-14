@@ -9,8 +9,11 @@ import scala.collection.mutable
 
 class SimpleKvs(raf: RandomAccessFile, keyIndex: mutable.Map[String, Long]) {
 
+  private final val sep = '\n'
+  private final val kvSep = ","
+
   private def format(key: String, value: String): String =
-    s"$key,$value\n"
+    s"$key$kvSep$value$sep"
 
   def set(key: String, value: String): Unit = {
     val pos = raf.length()
@@ -19,30 +22,29 @@ class SimpleKvs(raf: RandomAccessFile, keyIndex: mutable.Map[String, Long]) {
     keyIndex.update(key, pos)
   }
 
-  def get(key: String): Option[String] = {
-    @scala.annotation.tailrec
-    def seek(befPos: Long): Option[String] =
-      if (befPos >= 0) {
-        var pos = befPos
-        while (pos >= 0 && raf.read() != '\n') {
-          pos -= 1
-          if (pos >= 0) raf.seek(pos)
-        }
+  @scala.annotation.tailrec
+  private def seek(key: String, befPos: Long): Option[String] =
+    if (befPos >= 0) {
+      var pos = befPos
+      while (pos >= 0 && raf.read() != sep) {
+        pos -= 1
+        if (pos >= 0) raf.seek(pos)
+      }
 
-        raf.seek(pos + 1)
-        val line = raf.readLine().split(",")
+      raf.seek(pos + 1)
+      val line = raf.readLine().split(kvSep)
 
-        if (line(0) == key) Some(line(1))
-        else seek(pos - 1)
-      } else None
+      if (line(0) == key) Some(line(1))
+      else seek(key, pos - 1)
+    } else None
 
+  def get(key: String): Option[String] =
     keyIndex.get(key) match {
-      case Some(pos) => seek(pos)
+      case Some(pos) => seek(key, pos)
       case None =>
         val pos = raf.length() - 1
-        seek(pos)
+        seek(key, pos)
     }
-  }
 
 }
 
