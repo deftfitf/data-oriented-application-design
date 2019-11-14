@@ -46,17 +46,17 @@ object SimpleKvs extends IOApp {
 
   private val databaseFileName = "data/simplekvs/database.txt"
 
+  def apply(databaseFileName: String): SimpleKvs = {
+    val file = new java.io.File(databaseFileName)
+    if (!file.exists() && !file.createNewFile())
+      throw new Throwable(s"can not initialize db file. ${file.getAbsolutePath}")
+
+    val raf = new java.io.RandomAccessFile(file, "rw")
+    new SimpleKvs(raf)
+  }
+
   def simpleKvs[F[_]: Sync](databaseFileName: String): F[SimpleKvs] =
-    for {
-      file <- Sync[F].delay(new java.io.File(databaseFileName))
-      _ <- if (!file.exists()) {
-        Sync[F].delay(file.createNewFile()) >>= { created =>
-          if (created) Sync[F].pure()
-          else Sync[F].raiseError[Unit](new Throwable(s"can not initialize db file. ${file.getAbsolutePath}"))
-        }
-      } else Sync[F].unit
-      raf <- Sync[F].delay(new java.io.RandomAccessFile(file, "rw"))
-    } yield new SimpleKvs(raf)
+    Sync[F].delay(apply(databaseFileName))
 
   def scanner[F[_]: Sync]: F[Scanner] = Sync[F].delay(new Scanner(System.in))
 
