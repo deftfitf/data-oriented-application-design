@@ -1,7 +1,6 @@
 package kvs
 
 import java.io.RandomAccessFile
-import java.nio.charset.Charset
 import java.util.Scanner
 
 import cats.effect.{ExitCode, IO, IOApp, Sync}
@@ -9,14 +8,12 @@ import cats.implicits._
 
 class SimpleKvs(raf: RandomAccessFile) {
 
-  private val charset = Charset.forName("ascii")
-
   private def format(key: String, value: String): String =
     s"$key,$value\n"
 
   def set(key: String, value: String): Unit = {
     raf.seek(raf.length())
-    raf.writeBytes(format(key,value))
+    raf.writeBytes(format(key, value))
   }
 
   def get(key: String): Option[String] = {
@@ -29,7 +26,7 @@ class SimpleKvs(raf: RandomAccessFile) {
           if (pos >= 0) raf.seek(pos)
         }
 
-        raf.seek(pos+1)
+        raf.seek(pos + 1)
         val line = raf.readLine().split(",")
 
         if (line(0) == key) Some(line(1))
@@ -49,7 +46,8 @@ object SimpleKvs extends IOApp {
   def apply(databaseFileName: String): SimpleKvs = {
     val file = new java.io.File(databaseFileName)
     if (!file.exists() && !file.createNewFile())
-      throw new Throwable(s"can not initialize db file. ${file.getAbsolutePath}")
+      throw new Throwable(
+        s"can not initialize db file. ${file.getAbsolutePath}")
 
     val raf = new java.io.RandomAccessFile(file, "rw")
     new SimpleKvs(raf)
@@ -66,9 +64,13 @@ object SimpleKvs extends IOApp {
       _ <- lineR match {
         case Right(line) =>
           line(0) match {
-            case "set" => Sync[F].delay(kvs.set(line(1), line(2))) >> interpreter(sc, kvs)
-            case "get" => Sync[F].delay(println(kvs.get(line(1)))) >> interpreter(sc, kvs)
-            case other => Sync[F].raiseError[Unit](new Throwable(s"can not supported this command: $other"))
+            case "set" =>
+              Sync[F].delay(kvs.set(line(1), line(2))) >> interpreter(sc, kvs)
+            case "get" =>
+              Sync[F].delay(println(kvs.get(line(1)))) >> interpreter(sc, kvs)
+            case other =>
+              Sync[F].raiseError[Unit](
+                new Throwable(s"can not supported this command: $other"))
           }
         case Left(e) => Sync[F].raiseError[Unit](e)
       }

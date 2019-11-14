@@ -1,15 +1,36 @@
 import Dependencies._
 
-ThisBuild / scalaVersion     := "2.13.1"
-ThisBuild / version          := "0.1.0-SNAPSHOT"
-ThisBuild / organization     := "com.example"
-ThisBuild / organizationName := "example"
-
 lazy val commonSettings = Seq(
+  scalaVersion     := "2.13.1",
+  version          := "0.1.0-SNAPSHOT",
+  organization     := "com.example",
+  organizationName := "example",
+  scalacOptions in Compile ++= Seq(
+    "-feature",
+    "-deprecation",
+    "-unchecked",
+    "-encoding",
+    "UTF-8",
+    "-Xfatal-warnings",
+    "-Xlint",
+    "-language:existentials",
+    "-language:implicitConversions",
+    "-language:postfixOps",
+    "-language:higherKinds",
+    "-Ywarn-dead-code",
+    "-Ywarn-numeric-widen",
+    "-Ywarn-unused",
+    "-Ywarn-value-discard",
+  ),
+  scalacOptions in console -= "-Ywarn-unused-import",
+  scalacOptions in Test ++= Seq("-Yrangepos"),
   libraryDependencies ++= Seq(
     "org.typelevel" %% "cats-effect" % "2.0.0",
+    "org.specs2" %% "specs2-core" % "4.8.0" % Test,
+    "org.specs2" %% "specs2-mock" % "4.8.0" % Test,
     scalaTest % Test
-  )
+  ),
+  scalafmtOnCompile in ThisBuild := true,
 )
 
 lazy val root = (project in file("."))
