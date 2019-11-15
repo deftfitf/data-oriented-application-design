@@ -13,6 +13,7 @@ class SimpleKvs(raf: RandomAccessFile, keyIndex: mutable.Map[String, Long]) {
   private final val VALUE_HEADER_SIZE = Integer.BYTES
   private final val HEADER_SIZE = Integer.BYTES * 2
   private final val MIN_DATA_SIZE = HEADER_SIZE + 2
+  private final val tombstone = Integer.MIN_VALUE
 
   def set(key: String, value: String): Unit = {
     raf.seek(raf.length())
@@ -40,6 +41,9 @@ class SimpleKvs(raf: RandomAccessFile, keyIndex: mutable.Map[String, Long]) {
       pos -= VALUE_HEADER_SIZE
       raf.seek(pos)
       val valueLen = raf.readInt()
+      if (valueLen == tombstone) {
+        return None
+      }
       pos -= valueLen
 
       if (currentKey.sameElements(key)) {
@@ -56,6 +60,15 @@ class SimpleKvs(raf: RandomAccessFile, keyIndex: mutable.Map[String, Long]) {
     keyIndex.get(key) match {
       case Some(pos) => seek(key.getBytes(), pos)
       case None      => seek(key.getBytes(), raf.length())
+    }
+
+  def del(key: String): Unit =
+    get(key) foreach { _ =>
+      raf.seek(raf.length())
+      raf.writeInt(tombstone)
+      raf.writeBytes(key)
+      raf.writeInt(key.length)
+      keyIndex.update(key, raf.getFilePointer)
     }
 
 }

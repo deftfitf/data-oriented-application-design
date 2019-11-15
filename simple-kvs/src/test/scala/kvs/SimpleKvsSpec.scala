@@ -67,4 +67,30 @@ class SimpleKvsSpec extends Specification {
 
   }
 
+  "#del" should {
+
+    "削除対象のキーに値が存在しない場合, 何もしない" in new context {
+      simpleKvs.set("key1", "value1")
+      simpleKvs.set("key2", "value2")
+      simpleKvs.set("key3", "value3")
+
+      simpleKvs.del("key4")
+
+      simpleKvs.get("key1") must beSome("value1")
+      simpleKvs.get("key2") must beSome("value2")
+      simpleKvs.get("key3") must beSome("value3")
+    }
+
+    "削除対象のキーに値が存在する場合, 値を削除する" in new context {
+      simpleKvs.set("key1", "value1")
+      simpleKvs.set("key2", "value2")
+      simpleKvs.set("key1", "value1_updated")
+
+      simpleKvs.del("key1")
+
+      simpleKvs.get("key1") must beNone
+    }
+
+  }
+
 }
