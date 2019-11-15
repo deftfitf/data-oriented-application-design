@@ -9,41 +9,53 @@ import scala.collection.mutable
 
 class SimpleKvs(raf: RandomAccessFile, keyIndex: mutable.Map[String, Long]) {
 
-  private final val sep = '\n'
-  private final val kvSep = ","
-
-  private def format(key: String, value: String): String =
-    s"$key$kvSep$value$sep"
+  private final val KEY_HEADER_SIZE = Integer.BYTES
+  private final val VALUE_HEADER_SIZE = Integer.BYTES
+  private final val HEADER_SIZE = Integer.BYTES * 2
+  private final val MIN_DATA_SIZE = HEADER_SIZE + 2
 
   def set(key: String, value: String): Unit = {
-    val pos = raf.length()
-    raf.seek(pos)
-    raf.writeBytes(format(key, value))
-    keyIndex.update(key, pos)
+    raf.seek(raf.length())
+    raf.writeBytes(value)
+    raf.writeInt(value.length)
+    raf.writeBytes(key)
+    raf.writeInt(key.length)
+    keyIndex.update(key, raf.getFilePointer)
   }
 
   @scala.annotation.tailrec
-  private def seek(key: String, befPos: Long): Option[String] =
-    if (befPos >= 0) {
+  private def seek(key: Array[Byte], befPos: Long): Option[String] =
+    if (befPos >= MIN_DATA_SIZE) {
       var pos = befPos
-      while (pos >= 0 && raf.read() != sep) {
-        pos -= 1
-        if (pos >= 0) raf.seek(pos)
+      raf.seek(pos)
+
+      pos -= KEY_HEADER_SIZE
+      raf.seek(pos)
+      val keyLen = raf.readInt()
+      pos -= keyLen
+      raf.seek(pos)
+      val currentKey = new Array[Byte](keyLen)
+      raf.readFully(currentKey)
+
+      pos -= VALUE_HEADER_SIZE
+      raf.seek(pos)
+      val valueLen = raf.readInt()
+      pos -= valueLen
+
+      if (currentKey.sameElements(key)) {
+        val value = new Array[Byte](valueLen)
+        raf.seek(pos)
+        raf.readFully(value)
+        Some(new String(value))
+      } else {
+        seek(key, pos)
       }
-
-      raf.seek(pos + 1)
-      val line = raf.readLine().split(kvSep)
-
-      if (line(0) == key) Some(line(1))
-      else seek(key, pos - 1)
     } else None
 
   def get(key: String): Option[String] =
     keyIndex.get(key) match {
-      case Some(pos) => seek(key, pos)
-      case None =>
-        val pos = raf.length() - 1
-        seek(key, pos)
+      case Some(pos) => seek(key.getBytes(), pos)
+      case None      => seek(key.getBytes(), raf.length())
     }
 
 }
