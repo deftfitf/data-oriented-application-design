@@ -25,7 +25,6 @@ lazy val commonSettings = Seq(
   scalacOptions in console -= "-Ywarn-unused-import",
   scalacOptions in Test ++= Seq("-Yrangepos"),
   libraryDependencies ++= Seq(
-    "org.typelevel" %% "cats-effect" % "2.0.0",
     "org.specs2" %% "specs2-core" % "4.8.0" % Test,
     "org.specs2" %% "specs2-mock" % "4.8.0" % Test,
     scalaTest % Test
@@ -42,6 +41,10 @@ lazy val root = (project in file("."))
 lazy val simpleKvs = (project in file("simple-kvs"))
   .settings(
     commonSettings,
+    libraryDependencies ++= Seq(
+      "com.typesafe.akka" %% "akka-actor-typed" % "2.6.0",
+      "ch.qos.logback" % "logback-classic" % "1.1.3" % Runtime
+    ),
     name := "simple-kvs"
   )
 
