@@ -525,46 +525,46 @@ object SSTableFactory {
 
 }
 
-//object MergeProcess {
-//  final case class Merge(mergeSegments: List[Int], replyTo: ActorRef[Merged])
-//  final case class Merged(mergedSegment: SSTable, remove: List[Int])
-//
-//  final case object MergeException extends Throwable
-//
-//  def apply(): Behavior[Merge] =
-//    Behaviors.supervise(behavior)
-//      .onFailure[Throwable](SupervisorStrategy.restart)
-//
-//  private def behavior: Behavior[Merge] =
-//    Behaviors.receiveMessage {
-//      case Merge(mergeSegments, replyTo) =>
-//        val merged = iterative2WayMerge(mergeSegments)
-//        replyTo ! Merged(merged, mergeSegments)
-//        Behaviors.same
-//    }
-//
-//  private def readonlyRandomAccessFile(segmentNo: Int): RandomAccessFile = {
-//    val file = new java.io.File(SSTable.segmentFilePath(segmentNo))
-//    if (!file.exists()) throw MergeException
-//    new java.io.RandomAccessFile(file, "r")
-//  }
-//
-//  private def createRandomAccessFile(segmentNo: Int): RandomAccessFile = {
-//    val file = new java.io.File(SSTable.segmentFilePath(segmentNo))
-//    if (file.exists()) throw MergeException
-//    file.createNewFile()
-//    new java.io.RandomAccessFile(file, "rw")
-//  }
-//
-//  private def iterative2WayMerge(sstables: List[Int]): SSTable = {
-//    val base = readonlyRandomAccessFile()
-//    sstables.map(readonlyRandomAccessFile).reduce { (merged, next) =>
-//
-//      merged
-//    }
-//    ???
-//  }
-//
-//  private def twoWayMerge(baseRaf: RandomAccessFile, )
-//
-//}
+object MergeProcess {
+  final case class Merge(mergeSegments: List[Int], replyTo: ActorRef[Merged])
+  final case class Merged(mergedSegment: SSTable, remove: List[Int])
+
+  final case object MergeException extends Throwable
+
+  def apply(): Behavior[Merge] =
+    Behaviors.supervise(behavior)
+      .onFailure[Throwable](SupervisorStrategy.restart)
+
+  private def behavior: Behavior[Merge] =
+    Behaviors.receiveMessage {
+      case Merge(mergeSegments, replyTo) =>
+        val merged = iterative2WayMerge(mergeSegments)
+        replyTo ! Merged(merged, mergeSegments)
+        Behaviors.same
+    }
+
+  private def readonlyRandomAccessFile(segmentNo: Int): RandomAccessFile = {
+    val file = new java.io.File(SSTable.segmentFilePath(segmentNo))
+    if (!file.exists()) throw MergeException
+    new java.io.RandomAccessFile(file, "r")
+  }
+
+  private def createRandomAccessFile(segmentNo: Int): RandomAccessFile = {
+    val file = new java.io.File(SSTable.segmentFilePath(segmentNo))
+    if (file.exists()) throw MergeException
+    file.createNewFile()
+    new java.io.RandomAccessFile(file, "rw")
+  }
+
+  private def iterative2WayMerge(sstables: List[Int]): SSTable = {
+    val base = readonlyRandomAccessFile()
+    sstables.map(readonlyRandomAccessFile).reduce { (merged, next) =>
+
+      merged
+    }
+    ???
+  }
+
+  private def twoWayMerge(baseRaf: RandomAccessFile, )
+
+}
