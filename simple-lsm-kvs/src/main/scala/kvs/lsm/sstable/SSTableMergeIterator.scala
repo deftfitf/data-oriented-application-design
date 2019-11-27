@@ -1,24 +1,27 @@
-package kvs.lsm
+package kvs.lsm.sstable
 
-import SegmentFileMergeIterator._
+import kvs.lsm.sstable.SSTable.{SSTableReader, Value}
+
+import scala.annotation.tailrec
 
 /**
- * @param segmentFiles 新しい順に並んだセグメントファイルのIterator
- */
-class SegmentFileMergeIterator(segmentFiles: IndexedSeq[SegmentFileIterator]) extends Iterator[(String, Value)] {
+  * @param sSTables 新しい順に並んだSSTableのReaderのIterator
+  */
+class SSTableMergeIterator private (sSTables: IndexedSeq[SSTableReader])
+    extends Iterator[(String, Value)] {
 
   private val BUFFER_IS_EMPTY = 0
   private val BUFFER_IS_FILLED = 1
   private val REACHED_EOF = 2
 
-  private val SEGMENT_FILE_SIZE = segmentFiles.size
+  private val SEGMENT_FILE_SIZE = sSTables.size
   private val emptyBuffer = Array.fill(SEGMENT_FILE_SIZE)(BUFFER_IS_EMPTY)
   private val keyBuffer = new Array[String](SEGMENT_FILE_SIZE)
 
   /**
-   * 読み込みを行い, 次の値が存在するかどうかを確認する.
-   * @return 全てのセグメントファイルがEOFに達していれば true
-   */
+    * 読み込みを行い, 次の値が存在するかどうかを確認する.
+    * @return 全てのセグメントファイルがEOFに達していれば true
+    */
   override def hasNext: Boolean = {
     fulfillBuffer()
     !emptyBuffer.forall(_ == REACHED_EOF)
@@ -26,8 +29,8 @@ class SegmentFileMergeIterator(segmentFiles: IndexedSeq[SegmentFileIterator]) ex
 
   private def readNextOf(i: Int): Unit = {
     if (emptyBuffer(i) == BUFFER_IS_EMPTY) {
-      if (segmentFiles(i).hasNext) {
-        keyBuffer(i) = segmentFiles(i).nextKey
+      if (sSTables(i).hasNext) {
+        keyBuffer(i) = sSTables(i).readKey()
         emptyBuffer(i) = BUFFER_IS_FILLED
       } else {
         emptyBuffer(i) = REACHED_EOF
@@ -45,35 +48,33 @@ class SegmentFileMergeIterator(segmentFiles: IndexedSeq[SegmentFileIterator]) ex
       .min
 
   /**
-   * @return 現在バッファに読み込まれているキーの中で最小のキーの中で最新の値を返す.
-   */
+    * @return 現在バッファに読み込まれているキーの中で最小のキーの中で最新の値を返す.
+    */
   override def next(): (String, Value) = {
     val minKey = bufferFilledMinKey()
 
+    @tailrec
     def loop(i: Int): Value =
       if (i < SEGMENT_FILE_SIZE) {
         if (emptyBuffer(i) == BUFFER_IS_FILLED && keyBuffer(i) == minKey) {
-          val value = segmentFiles(i).nextValue
+          val latest = sSTables(i).readValue()
           emptyBuffer(i) = BUFFER_IS_EMPTY
-          val latest = value match {
-            case Some(value) => Exist(value)
-            case None => Deleted
-          }
-          loopAfterLatest(i+1, latest)
+          loopAfterLatest(i + 1, latest)
         } else {
-          loop(i+1)
+          loop(i + 1)
         }
       } else {
-        Deleted // not reach this code.
+        Value.Deleted // not reach this code.
       }
 
+    @tailrec
     def loopAfterLatest(i: Int, latest: Value): Value =
       if (i < SEGMENT_FILE_SIZE) {
         if (emptyBuffer(i) == BUFFER_IS_FILLED && keyBuffer(i) == minKey) {
-          segmentFiles(i).skipValue
+          sSTables(i).skipValue()
           emptyBuffer(i) = BUFFER_IS_EMPTY
         }
-        loopAfterLatest(i+1, latest)
+        loopAfterLatest(i + 1, latest)
       } else latest
 
     (minKey, loop(0))
@@ -81,10 +82,13 @@ class SegmentFileMergeIterator(segmentFiles: IndexedSeq[SegmentFileIterator]) ex
 
 }
 
-object SegmentFileMergeIterator {
+object SSTableMergeIterator {
 
-  sealed trait Value
-  case class Exist(value: String) extends Value
-  case object Deleted extends Value
+  def apply(sSTables: Seq[SSTable]) =
+    new SSTableMergeIterator(
+      sSTables
+        .sortBy(_.sequenceNo)
+        .map(_.newReader())
+        .toIndexedSeq)
 
 }
