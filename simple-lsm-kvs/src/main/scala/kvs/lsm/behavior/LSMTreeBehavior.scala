@@ -7,7 +7,7 @@ import akka.util.Timeout
 import kvs.lsm.Log
 import kvs.lsm.Log.{MemTable, SSTableRef}
 import kvs.lsm.behavior.LSMTreeBehavior.Response.{Got, UnInitialized}
-import kvs.lsm.sstable.{SSTable, SSTableFactory}
+import kvs.lsm.sstable.{SSTable, SSTableFactory, WriteAheadLog}
 import kvs.lsm.statistics.Statistics
 
 import scala.collection.immutable.{SortedMap, TreeMap}
@@ -55,6 +55,7 @@ object LSMTreeBehavior {
       context: ActorContext[Command],
       sequenceNo: Int,
       memTable: MemTable,
+      writeAheadLog: WriteAheadLog,
       lockedLogs: SortedMap[Int, Log],
       sSTableFactoryBehavior: ActorRef[SSTableFactoryBehavior.Command],
       sSTableMergeBehavior: ActorRef[SSTableMergeBehavior.Merge])
@@ -72,7 +73,8 @@ object LSMTreeBehavior {
         SSTableMergeBehavior(sSTableFactory, readerPoolSize))
 
       val statistics = Statistics.initialize()
-      val memTable: MemTable = statistics.recoveryMemTable()
+      val writeAheadLog = WriteAheadLog.initialize()
+      val memTable: MemTable = writeAheadLog.recovery()
       val lockedLogs = TreeMap[Int, Log]()(Ordering.Int.reverse)
 
       val adapter = context.messageAdapter(Command.Applied)
@@ -97,6 +99,7 @@ object LSMTreeBehavior {
               context = context,
               sequenceNo = statistics.lastSequenceNo + 1,
               memTable = memTable,
+              writeAheadLog = writeAheadLog,
               lockedLogs = state.lockedLogs,
               sSTableFactoryBehavior = sSTableFactoryBehavior,
               sSTableMergeBehavior = sSTableMergeBehavior
@@ -122,6 +125,7 @@ object LSMTreeBehavior {
         Behaviors.same
 
       case Command.Request.Set(key, value, replyTo) =>
+        state.writeAheadLog.set(key, value)
         state.memTable.set(key, value)
         replyTo ! Response.Set
 
@@ -135,6 +139,7 @@ object LSMTreeBehavior {
           val newMemTable = MemTable.empty
           val updatedLockedLogs =
             state.lockedLogs.updated(state.sequenceNo, state.memTable)
+          state.writeAheadLog.clear()
 
           active(
             state.copy(sequenceNo = state.sequenceNo + 2,
@@ -145,8 +150,9 @@ object LSMTreeBehavior {
         }
 
       case Command.Request.Del(key, replyTo) =>
-        replyTo ! Response.Deleted
+        state.writeAheadLog.del(key)
         state.memTable.del(key)
+        replyTo ! Response.Deleted
         Behaviors.same
 
       case Command.Applied(res) =>

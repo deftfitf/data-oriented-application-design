@@ -7,11 +7,7 @@ import kvs.lsm.Log.MemTable
 import scala.io.Source
 
 case class Statistics private (lastSequenceNo: Int,
-                               activeSequenceNos: Seq[Int]) {
-
-  def recoveryMemTable(): MemTable = ???
-
-}
+                               activeSequenceNos: Seq[Int])
 
 object Statistics {
 
