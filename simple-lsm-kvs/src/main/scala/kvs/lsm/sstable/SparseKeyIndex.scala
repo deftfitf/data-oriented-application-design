@@ -1,5 +1,7 @@
 package kvs.lsm.sstable
 
+import kvs.lsm.sstable.SparseKeyIndex.Position
+
 import scala.annotation.tailrec
 
 /**
@@ -21,7 +23,7 @@ case class SparseKeyIndex(sparseKeys: IndexedSeq[String],
     *         前者であれば, 最初のキーで発見できる
     *         後者であれば, EOFまで検査する必要がある.
     */
-  def positionRange(key: String): (Long, Option[Long]) = {
+  def positionRange(key: String): Position = {
     @tailrec
     def binarySearch(l: Int, r: Int): Int =
       if (r - l > 1) {
@@ -31,12 +33,26 @@ case class SparseKeyIndex(sparseKeys: IndexedSeq[String],
       } else l
 
     val left = binarySearch(-1, sparseKeys.size)
-    if (sparseKeys(left) == key)
-      (keyPositions(left), None)
+    if (left == -1)
+      Position.NotFound
+    else if (sparseKeys(left) == key)
+      Position.Found(keyPositions(left))
     else if (left < sparseKeys.size - 1)
-      (keyPositions(left), Some(keyPositions(left + 1)))
+      Position.Range(keyPositions(left), keyPositions(left + 1))
     else
-      (keyPositions(left), None)
+      Position.Tail(keyPositions(left))
+  }
+
+}
+
+object SparseKeyIndex {
+
+  sealed trait Position
+  object Position {
+    final case object NotFound extends Position
+    final case class Found(start: Long) extends Position
+    final case class Range(start: Long, end: Long) extends Position
+    final case class Tail(start: Long) extends Position
   }
 
 }

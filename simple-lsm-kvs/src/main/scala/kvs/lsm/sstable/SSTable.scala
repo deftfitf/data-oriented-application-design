@@ -4,6 +4,7 @@ import java.io.RandomAccessFile
 
 import kvs.lsm.sstable.SSTable.Got.NotFound
 import kvs.lsm.sstable.SSTable._
+import kvs.lsm.sstable.SparseKeyIndex.Position
 
 import scala.annotation.tailrec
 
@@ -58,8 +59,12 @@ object SSTable {
     @throws[java.io.IOException]
     def get(key: String): Got =
       sparseKeyIndex.positionRange(key) match {
-        case (left, Some(right)) => rangeSearch(key.getBytes, left, right)
-        case (left, None)        => rangeSearch(key.getBytes, left, RAF_LENGTH)
+        case Position.NotFound => Got.NotFound
+        case Position.Found(start) =>
+          rangeSearch(key.getBytes, start, start + 1)
+        case Position.Range(start, end) => rangeSearch(key.getBytes, start, end)
+        case Position.Tail(start) =>
+          rangeSearch(key.getBytes, start, RAF_LENGTH)
       }
 
   }

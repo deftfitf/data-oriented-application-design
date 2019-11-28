@@ -26,13 +26,8 @@ class WriteAheadLogSpec extends Specification {
             .getPath
             .concat("/write_ahead_log_test_temp.txt"))
 
-      println(
-        classLoader
-          .getResource("test/wal")
-          .getPath
-          .concat("/write_ahead_log_test_temp.txt"))
-
       def after = {
+        writeAheadLog.close()
         val file = new File(
           classLoader
             .getResource("test/wal")
@@ -62,10 +57,14 @@ class WriteAheadLogSpec extends Specification {
       writtenLog.sameElements(expectedWriteAheadLog) must beTrue
     }
 
-    trait case2 extends Scope {
+    trait case2 extends Scope with After {
       val writeAheadLog =
         WriteAheadLog.initialize(
           classLoader.getResource("test/wal/write_ahead_log_test.txt").getPath)
+
+      def after: Any = {
+        writeAheadLog.close()
+      }
     }
 
     "a file written in binary format can be replayed correctly" in new case2 {
