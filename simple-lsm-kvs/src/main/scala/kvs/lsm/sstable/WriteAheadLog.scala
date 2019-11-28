@@ -56,14 +56,12 @@ object WriteAheadLog {
   final case class WriteAheadLogInitializeError(message: String)
       extends Throwable(message)
 
-  private val WRITE_AHEAD_LOG_PATH = "data/simplekvs/lsm/write_ahead_log.txt"
-
   @throws[WriteAheadLogInitializeError]
-  def initialize(): WriteAheadLog = {
-    val file = new File(WRITE_AHEAD_LOG_PATH)
+  def initialize(writeAheadLogPath: String): WriteAheadLog = {
+    val file = new File(writeAheadLogPath)
     if (!file.exists() && !file.createNewFile()) {
       throw WriteAheadLogInitializeError(
-        s"can't find and create write ahead log: $WRITE_AHEAD_LOG_PATH")
+        s"can't find and create write ahead log: $writeAheadLogPath")
     }
     try {
       val raf = new RandomAccessFile(file, "rw")

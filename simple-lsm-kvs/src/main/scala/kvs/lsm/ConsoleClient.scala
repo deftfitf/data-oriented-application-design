@@ -7,13 +7,17 @@ import kvs.lsm.sstable.SSTableFactory
 
 object ConsoleClient {
 
+  val WRITE_AHEAD_LOG_PATH = "data/simplekvs/lsm/write_ahead_log.txt"
+
   def main(args: Array[String]): Unit = {
     val sSTableFactory = new SSTableFactory
     val system = ActorSystem(
       LSMTreeBehavior(sSTableFactory,
                       readerPoolSize = 3,
+                      writeAheadLogPath = WRITE_AHEAD_LOG_PATH,
                       DispatcherSelector.fromConfig("blocking-io-dispatcher")),
-      "lsm-tree")
+      "lsm-tree"
+    )
     sys.addShutdownHook {
       system.terminate()
     }
@@ -40,7 +44,7 @@ object ConsoleClient {
           case "get" => system ! LSMTreeBehavior.Command.Request.Get(cmd(1), r)
           case "set" =>
             system ! LSMTreeBehavior.Command.Request.Set(cmd(1), cmd(2), r)
-          case "del" => system ! LSMTreeBehavior.Command.Request.Del(cmd(1), r)
+          case "del"  => system ! LSMTreeBehavior.Command.Request.Del(cmd(1), r)
           case "exit" => sys.exit()
         }
       } catch {

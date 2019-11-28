@@ -70,6 +70,7 @@ object LSMTreeBehavior {
 
   def apply(sSTableFactory: SSTableFactory,
             readerPoolSize: Int,
+            writeAheadLogPath: String,
             blockingIoDispatcher: DispatcherSelector): Behavior[Command] =
     Behaviors
       .supervise(
@@ -77,8 +78,10 @@ object LSMTreeBehavior {
           .supervise(
             Behaviors
               .supervise(Behaviors
-                .supervise(
-                  start(sSTableFactory, readerPoolSize, blockingIoDispatcher))
+                .supervise(start(sSTableFactory,
+                                 readerPoolSize,
+                                 writeAheadLogPath,
+                                 blockingIoDispatcher))
                 .onFailure[StatisticsInitializeError](SupervisorStrategy.stop))
               .onFailure[WriteAheadLogInitializeError](SupervisorStrategy.stop))
           .onFailure[WriteAheadLogRecoveryError](SupervisorStrategy.stop))
@@ -86,6 +89,7 @@ object LSMTreeBehavior {
 
   def start(sSTableFactory: SSTableFactory,
             readerPoolSize: Int,
+            writeAheadLogPath: String,
             blockingIoDispatcher: DispatcherSelector): Behavior[Command] =
     Behaviors.setup[Command] { context =>
       implicit val ec: ExecutionContext =
@@ -98,7 +102,7 @@ object LSMTreeBehavior {
         blockingIoDispatcher)
 
       val statistics = Statistics.initialize()
-      val writeAheadLog = WriteAheadLog.initialize()
+      val writeAheadLog = WriteAheadLog.initialize(writeAheadLogPath)
       val memTable: MemTable = writeAheadLog.recovery()
 
       val adapter = context.messageAdapter(Command.Applied)

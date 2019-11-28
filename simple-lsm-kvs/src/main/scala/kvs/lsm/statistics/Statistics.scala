@@ -66,8 +66,11 @@ object Statistics {
         val statistics = reader.readLine().split("\\s+")
         val nextSequenceNo = statistics(0).toInt
         val activeSequenceNos =
-          statistics(1).tail.init.split(",")
-            .filter(_.nonEmpty).map(_.toInt).toSeq
+          statistics(1).tail.init
+            .split(",")
+            .filter(_.nonEmpty)
+            .map(_.toInt)
+            .toSeq
         Statistics(file, nextSequenceNo, activeSequenceNos)
       } finally {
         reader.close()
