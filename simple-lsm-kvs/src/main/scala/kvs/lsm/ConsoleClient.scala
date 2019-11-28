@@ -5,7 +5,7 @@ import akka.actor.typed.scaladsl.Behaviors
 import kvs.lsm.behavior.LSMTreeBehavior
 import kvs.lsm.sstable.SSTableFactory
 
-object Client {
+object ConsoleClient {
 
   def main(args: Array[String]): Unit = {
     val sSTableFactory = new SSTableFactory
@@ -34,12 +34,18 @@ object Client {
 
     val sc = new java.util.Scanner(System.in)
     while (sc.hasNextLine()) {
-      val cmd = sc.nextLine().trim.split("\\s+")
-      cmd(0).toLowerCase match {
-        case "get" => system ! LSMTreeBehavior.Command.Request.Get(cmd(1), r)
-        case "set" =>
-          system ! LSMTreeBehavior.Command.Request.Set(cmd(1), cmd(2), r)
-        case "del" => system ! LSMTreeBehavior.Command.Request.Del(cmd(1), r)
+      try {
+        val cmd = sc.nextLine().trim.split("\\s+")
+        cmd(0).toLowerCase match {
+          case "get" => system ! LSMTreeBehavior.Command.Request.Get(cmd(1), r)
+          case "set" =>
+            system ! LSMTreeBehavior.Command.Request.Set(cmd(1), cmd(2), r)
+          case "del" => system ! LSMTreeBehavior.Command.Request.Del(cmd(1), r)
+          case "exit" => sys.exit()
+        }
+      } catch {
+        case e: Throwable =>
+          println(s"Error: ${e.getMessage}")
       }
     }
   }
