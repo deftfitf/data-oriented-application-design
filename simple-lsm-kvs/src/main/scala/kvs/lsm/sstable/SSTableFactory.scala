@@ -8,7 +8,7 @@ import kvs.lsm.sstable.SSTableFactory._
 import scala.annotation.tailrec
 import scala.collection.mutable
 
-class SSTableFactory {
+class SSTableFactory(sparseIndexPer: Int, segmentFileBathPath: String) {
 
   @throws[java.io.IOException]
   private def writeKeyValue(key: String,
@@ -28,7 +28,7 @@ class SSTableFactory {
   @throws[SSTableInitializeError]
   def apply(sequenceNo: Int, iterator: Iterator[(String, Value)]): SSTable =
     try {
-      val segmentFile = new SegmentFile(sequenceNo)
+      val segmentFile = new SegmentFile(sequenceNo, segmentFileBathPath)
       segmentFile.createSegmentFile()
       val raf = segmentFile.newReadWriteRaf()
 
@@ -38,12 +38,13 @@ class SSTableFactory {
       @tailrec
       def loop(idx: Int): Unit =
         if (iterator.hasNext) {
+          val currentPosition = raf.getFilePointer
           val (key, value) = iterator.next()
           writeKeyValue(key, value, raf)
 
-          if (idx % SPARSE_INDEX_PER == 0) {
+          if (idx % sparseIndexPer == 0) {
             keyIndex.addOne(key)
-            positionIndex.addOne(raf.getFilePointer)
+            positionIndex.addOne(currentPosition)
           }
           loop(idx + 1)
         }
@@ -64,7 +65,7 @@ class SSTableFactory {
   @throws[SSTableRecoveryError]
   def recovery(sequenceNo: Int): SSTable =
     try {
-      val segmentFile = new SegmentFile(sequenceNo)
+      val segmentFile = new SegmentFile(sequenceNo, segmentFileBathPath)
       val reader = new SSTableReader(segmentFile.newReadWriteRaf())
       try {
         val keyIndex = mutable.ArrayBuffer[String]()
@@ -74,7 +75,7 @@ class SSTableFactory {
           @tailrec
           def recursive(idx: Int): Unit =
             if (reader.hasNext) {
-              if (idx % SPARSE_INDEX_PER == 0) {
+              if (idx % sparseIndexPer == 0) {
                 val pointer = reader.currentPointer()
                 val key = reader.readKey()
                 keyIndex.addOne(new String(key))
@@ -107,8 +108,6 @@ object SSTableFactory {
       extends Throwable(message)
   final case class SSTableRecoveryError(message: String)
       extends Throwable(message)
-
-  final private val SPARSE_INDEX_PER = 100
 
   private class SSTableReader(
       override protected val readOnlyRaf: RandomAccessFile)

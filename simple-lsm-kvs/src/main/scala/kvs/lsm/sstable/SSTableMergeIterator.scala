@@ -5,7 +5,7 @@ import kvs.lsm.sstable.SSTable.{SSTableReader, Value}
 import scala.annotation.tailrec
 
 /**
-  * @param sSTables 新しい順に並んだSSTableのReaderのIterator
+  * @param sSTables 新しい順(セグメント番号が大きい順)に並んだSSTableのReaderのIterator
   */
 class SSTableMergeIterator private (sSTables: IndexedSeq[SSTableReader])
     extends Iterator[(String, Value)] {
@@ -87,7 +87,7 @@ object SSTableMergeIterator {
   def apply(sSTables: Seq[SSTable]) =
     new SSTableMergeIterator(
       sSTables
-        .sortBy(_.sequenceNo)
+        .sortBy(_.sequenceNo)(Ordering.Int.reverse)
         .map(_.newReader())
         .toIndexedSeq)
 

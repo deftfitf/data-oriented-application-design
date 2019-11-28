@@ -2,12 +2,11 @@ package kvs.lsm.sstable
 
 import java.io.RandomAccessFile
 
-import kvs.lsm.sstable.SegmentFile._
-
-private[sstable] case class SegmentFile private[sstable] (sequenceNo: Int) {
+private[sstable] case class SegmentFile private[sstable] (sequenceNo: Int,
+                                                          basePath: String) {
 
   private def filePath: String =
-    s"$BASE_PATH/segment_file_$sequenceNo.txt"
+    s"$basePath/segment_file_$sequenceNo.txt"
 
   @throws[java.io.FileNotFoundException]
   private def raf(mode: String): RandomAccessFile = {
@@ -38,7 +37,5 @@ object SegmentFile {
   final val HEADER_SIZE = Integer.BYTES * 2
   final val MIN_DATA_SIZE = HEADER_SIZE + 2
   final val TOMBSTONE = Integer.MIN_VALUE
-
-  private val BASE_PATH: String = "data/simplekvs/lsm"
 
 }

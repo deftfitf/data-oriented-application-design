@@ -7,13 +7,18 @@ import kvs.lsm.sstable.SSTableFactory
 
 object ConsoleClient {
 
+  val SPARSE_INDEX_PER = 100
   val WRITE_AHEAD_LOG_PATH = "data/simplekvs/lsm/write_ahead_log.txt"
+  val SEGMENT_FILE_BATH_PATH = "data/simplekvs/lsm"
+  val SSTABLE_READER_POOL_SIZE = 3
 
   def main(args: Array[String]): Unit = {
-    val sSTableFactory = new SSTableFactory
+    val sSTableFactory =
+      new SSTableFactory(sparseIndexPer = SPARSE_INDEX_PER,
+                         segmentFileBathPath = SEGMENT_FILE_BATH_PATH)
     val system = ActorSystem(
       LSMTreeBehavior(sSTableFactory,
-                      readerPoolSize = 3,
+                      readerPoolSize = SSTABLE_READER_POOL_SIZE,
                       writeAheadLogPath = WRITE_AHEAD_LOG_PATH,
                       DispatcherSelector.fromConfig("blocking-io-dispatcher")),
       "lsm-tree"
