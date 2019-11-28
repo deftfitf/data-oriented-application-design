@@ -51,8 +51,10 @@ class WriteAheadLog(raf: RandomAccessFile) extends SegmentFileReadable {
 
 object WriteAheadLog {
 
-  final case class WriteAheadLogRecoveryError(message: String) extends Throwable(message)
-  final case class WriteAheadLogInitializeError(message: String) extends Throwable(message)
+  final case class WriteAheadLogRecoveryError(message: String)
+      extends Throwable(message)
+  final case class WriteAheadLogInitializeError(message: String)
+      extends Throwable(message)
 
   private val WRITE_AHEAD_LOG_PATH = "data/simplekvs/lsm/write_ahead_log.txt"
 
@@ -60,7 +62,8 @@ object WriteAheadLog {
   def initialize(): WriteAheadLog = {
     val file = new File(WRITE_AHEAD_LOG_PATH)
     if (!file.exists() && !file.createNewFile()) {
-      throw WriteAheadLogInitializeError(s"can't find and create write ahead log: $WRITE_AHEAD_LOG_PATH")
+      throw WriteAheadLogInitializeError(
+        s"can't find and create write ahead log: $WRITE_AHEAD_LOG_PATH")
     }
     try {
       val raf = new RandomAccessFile(file, "rw")

@@ -1,6 +1,6 @@
 package kvs.lsm
 
-import akka.actor.typed.{ActorSystem, Behavior}
+import akka.actor.typed.{ActorSystem, Behavior, DispatcherSelector}
 import akka.actor.typed.scaladsl.Behaviors
 import kvs.lsm.behavior.LSMTreeBehavior
 import kvs.lsm.sstable.SSTableFactory
@@ -10,7 +10,9 @@ object Client {
   def main(args: Array[String]): Unit = {
     val sSTableFactory = new SSTableFactory
     val system = ActorSystem(
-      LSMTreeBehavior.start(sSTableFactory, readerPoolSize = 3),
+      LSMTreeBehavior(sSTableFactory,
+                      readerPoolSize = 3,
+                      DispatcherSelector.fromConfig("blocking-io-dispatcher")),
       "lsm-tree")
     sys.addShutdownHook {
       system.terminate()

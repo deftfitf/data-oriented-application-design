@@ -3,7 +3,9 @@ package kvs.lsm.behavior
 import akka.actor.typed._
 import akka.actor.typed.scaladsl.{Behaviors, Routers}
 import kvs.lsm.sstable.SSTable
-import kvs.lsm.sstable.SSTable.{Got, SSTableReader}
+import kvs.lsm.sstable.SSTable.Got
+
+import scala.concurrent.duration._
 
 object SSTableBehavior {
 
@@ -12,14 +14,13 @@ object SSTableBehavior {
   def pool(sSTable: SSTable, size: Int = 3): Behavior[Get] =
     Routers.pool(poolSize = size)(
       Behaviors
-        .supervise(
-          Behaviors
-            .supervise(worker(sSTable.newReader()))
-            .onFailure[java.io.IOException](SupervisorStrategy.restart))
-        .onFailure[java.io.IOError](SupervisorStrategy.restart))
+        .supervise(worker(sSTable))
+        .onFailure[Throwable](SupervisorStrategy.restart
+          .withLimit(maxNrOfRetries = 3, withinTimeRange = 3.seconds)))
 
-  private def worker(sSTableReader: SSTableReader): Behavior[Get] =
+  private def worker(sSTable: SSTable): Behavior[Get] =
     Behaviors.setup { _ =>
+      val sSTableReader = sSTable.newReader()
       Behaviors
         .receiveMessage[Get] {
           case Get(key, replyTo) =>

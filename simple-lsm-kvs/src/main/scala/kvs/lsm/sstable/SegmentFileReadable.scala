@@ -7,7 +7,7 @@ import kvs.lsm.sstable.SSTable.Value
 private[sstable] trait SegmentFileReadable {
 
   protected val readOnlyRaf: RandomAccessFile
-  protected val RAF_LENGTH = readOnlyRaf.length()
+  protected lazy val RAF_LENGTH = readOnlyRaf.length()
 
   final def hasNext: Boolean = readOnlyRaf.getFilePointer < RAF_LENGTH
 

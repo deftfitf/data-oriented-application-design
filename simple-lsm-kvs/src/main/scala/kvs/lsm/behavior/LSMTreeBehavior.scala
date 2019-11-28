@@ -1,14 +1,19 @@
 package kvs.lsm.behavior
 
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
-import akka.actor.typed.{ActorRef, Behavior, DispatcherSelector, Scheduler}
+import akka.actor.typed._
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.util.Timeout
 import kvs.lsm.Log
 import kvs.lsm.Log.{MemTable, SSTableRef}
 import kvs.lsm.behavior.LSMTreeBehavior.Response.{Got, UnInitialized}
+import kvs.lsm.sstable.WriteAheadLog.{
+  WriteAheadLogInitializeError,
+  WriteAheadLogRecoveryError
+}
 import kvs.lsm.sstable.{SSTable, SSTableFactory, WriteAheadLog}
 import kvs.lsm.statistics.Statistics
+import kvs.lsm.statistics.Statistics.StatisticsInitializeError
 
 import scala.collection.immutable.{SortedMap, TreeMap}
 import scala.concurrent.{ExecutionContext, Future}
@@ -53,35 +58,55 @@ object LSMTreeBehavior {
   final case class Initializing(lockedLogs: SortedMap[Int, Log])
   final case class Initialized(
       context: ActorContext[Command],
-      sequenceNo: Int,
+      nextSequenceNo: Int,
       memTable: MemTable,
       writeAheadLog: WriteAheadLog,
       lockedLogs: SortedMap[Int, Log],
+      statistics: Statistics,
       sSTableFactoryBehavior: ActorRef[SSTableFactoryBehavior.Command],
       sSTableMergeBehavior: ActorRef[SSTableMergeBehavior.Merge])
 
   implicit val timeout: Timeout = 3.seconds
 
+  def apply(sSTableFactory: SSTableFactory,
+            readerPoolSize: Int,
+            blockingIoDispatcher: DispatcherSelector): Behavior[Command] =
+    Behaviors
+      .supervise(
+        Behaviors
+          .supervise(
+            Behaviors
+              .supervise(Behaviors
+                .supervise(
+                  start(sSTableFactory, readerPoolSize, blockingIoDispatcher))
+                .onFailure[StatisticsInitializeError](SupervisorStrategy.stop))
+              .onFailure[WriteAheadLogInitializeError](SupervisorStrategy.stop))
+          .onFailure[WriteAheadLogRecoveryError](SupervisorStrategy.stop))
+      .onFailure[Throwable](SupervisorStrategy.restart)
+
   def start(sSTableFactory: SSTableFactory,
-            readerPoolSize: Int): Behavior[Command] =
+            readerPoolSize: Int,
+            blockingIoDispatcher: DispatcherSelector): Behavior[Command] =
     Behaviors.setup[Command] { context =>
       implicit val ec: ExecutionContext =
-        context.system.dispatchers.lookup(DispatcherSelector.blocking())
+        context.system.dispatchers.lookup(blockingIoDispatcher)
       val sSTableFactoryBehavior = context.spawnAnonymous(
-        SSTableFactoryBehavior(sSTableFactory, readerPoolSize))
+        SSTableFactoryBehavior(sSTableFactory, readerPoolSize),
+        blockingIoDispatcher)
       val sSTableMergeBehavior = context.spawnAnonymous(
-        SSTableMergeBehavior(sSTableFactory, readerPoolSize))
+        SSTableMergeBehavior(sSTableFactory, readerPoolSize),
+        blockingIoDispatcher)
 
       val statistics = Statistics.initialize()
       val writeAheadLog = WriteAheadLog.initialize()
       val memTable: MemTable = writeAheadLog.recovery()
-      val lockedLogs = TreeMap[Int, Log]()(Ordering.Int.reverse)
 
       val adapter = context.messageAdapter(Command.Applied)
       statistics.activeSequenceNos.foreach {
         sSTableFactoryBehavior ! SSTableFactoryBehavior.Initialize(_, adapter)
       }
 
+      val lockedLogs = TreeMap[Int, Log]()(Ordering.Int.reverse)
       def initialize(count: Int, state: Initializing): Behavior[Command] =
         if (count < statistics.activeSequenceNos.size) {
           Behaviors.receiveMessagePartial {
@@ -97,10 +122,11 @@ object LSMTreeBehavior {
           active(
             Initialized(
               context = context,
-              sequenceNo = statistics.lastSequenceNo + 1,
+              nextSequenceNo = statistics.nextSequenceNo,
               memTable = memTable,
               writeAheadLog = writeAheadLog,
               lockedLogs = state.lockedLogs,
+              statistics = statistics,
               sSTableFactoryBehavior = sSTableFactoryBehavior,
               sSTableMergeBehavior = sSTableMergeBehavior
             ))
@@ -132,17 +158,17 @@ object LSMTreeBehavior {
         if (state.memTable.isOverMaxSize) {
           val adapter = state.context.messageAdapter(Command.Applied)
           state.sSTableFactoryBehavior ! SSTableFactoryBehavior.Apply(
-            state.sequenceNo,
+            state.nextSequenceNo,
             state.memTable,
             adapter)
 
           val newMemTable = MemTable.empty
           val updatedLockedLogs =
-            state.lockedLogs.updated(state.sequenceNo, state.memTable)
+            state.lockedLogs.updated(state.nextSequenceNo, state.memTable)
           state.writeAheadLog.clear()
 
           active(
-            state.copy(sequenceNo = state.sequenceNo + 2,
+            state.copy(nextSequenceNo = state.nextSequenceNo + 2,
                        memTable = newMemTable,
                        lockedLogs = updatedLockedLogs))
         } else {
@@ -164,6 +190,13 @@ object LSMTreeBehavior {
           .map[SSTable](_._2.asInstanceOf[SSTable])
           .toSeq
 
+        val activeSequenceNos =
+          updatedLockedLogs.values.collect {
+            case SSTableRef(sSTable, _) => sSTable.sequenceNo
+          }.toSeq
+        state.statistics.updateStatistics(state.nextSequenceNo,
+                                          activeSequenceNos)
+
         if (mergeSegments.size >= 2) {
           state.sSTableMergeBehavior ! SSTableMergeBehavior.Merge(
             res.sequenceNo + 1,
@@ -177,6 +210,13 @@ object LSMTreeBehavior {
           res.removedSequenceNo
             .foldLeft(state.lockedLogs)(_ removed _)
             .updated(res.mergedSegment.sSTable.sequenceNo, res.mergedSegment)
+
+        val activeSequenceNos =
+          mergedLockedLogs.values.collect {
+            case SSTableRef(sSTable, _) => sSTable.sequenceNo
+          }.toSeq
+        state.statistics.updateStatistics(state.nextSequenceNo,
+                                          activeSequenceNos)
 
         active(state.copy(lockedLogs = mergedLockedLogs))
 
