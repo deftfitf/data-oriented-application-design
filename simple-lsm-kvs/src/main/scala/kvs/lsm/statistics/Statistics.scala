@@ -3,24 +3,27 @@ package kvs.lsm.statistics
 import java.io._
 
 import kvs.lsm.statistics.Statistics.StatisticsIllegalState
-
 import Statistics._
+import kvs.lsm.sstable.Logs
 
 case class Statistics private (statisticsFile: File,
                                nextSequenceNo: Int,
                                activeSequenceNos: Seq[Int]) {
 
+  private def formatStatistics(nextSequenceNo: Int,
+                               activeSequenceNos: Seq[Int]): String =
+    s"$nextSequenceNo ${activeSequenceNos.mkString("[", ",", "]")}"
+
   @throws[StatisticsIllegalState]
-  def updateStatistics(nextSequenceNo: Int,
-                       activeSequenceNos: Seq[Int]): Unit = {
+  def updateStatistics(nextSequenceNo: Int, logs: Logs): Unit = {
     if (!statisticsFile.exists())
       throw StatisticsIllegalState(
         s"can't find statistics file: $STATISTICS_FILE")
     try {
       val writer = new FileWriter(statisticsFile)
       try {
-        writer.write(
-          s"$nextSequenceNo ${activeSequenceNos.mkString("[", ",", "]")}")
+        val formatted = formatStatistics(nextSequenceNo, logs.activeSequenceNos)
+        writer.write(formatted)
         writer.flush()
       } finally {
         writer.close()

@@ -1,21 +1,19 @@
 package kvs.lsm.behavior
 
-import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.actor.typed._
-import akka.actor.typed.scaladsl.AskPattern._
+import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.util.Timeout
-import kvs.lsm.sstable.Log.{MemTable, SSTableRef}
 import kvs.lsm.behavior.LSMTreeBehavior.Response.{Got, UnInitialized}
+import kvs.lsm.sstable.Log.MemTable
 import kvs.lsm.sstable.WriteAheadLog.{
   WriteAheadLogInitializeError,
   WriteAheadLogRecoveryError
 }
-import kvs.lsm.sstable.{Log, SSTable, SSTableFactory, WriteAheadLog}
+import kvs.lsm.sstable.{Logs, SSTable, SSTableFactory, WriteAheadLog}
 import kvs.lsm.statistics.Statistics
 import kvs.lsm.statistics.Statistics.StatisticsInitializeError
 
-import scala.collection.immutable.{SortedMap, TreeMap}
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
 import scala.concurrent.duration._
 
 object LSMTreeBehavior {
@@ -54,13 +52,13 @@ object LSMTreeBehavior {
   }
 
   sealed trait State
-  final case class Initializing(lockedLogs: SortedMap[Int, Log])
+  final case class Initializing(logs: Logs)
   final case class Initialized(
       context: ActorContext[Command],
       nextSequenceNo: Int,
       memTable: MemTable,
       writeAheadLog: WriteAheadLog,
-      lockedLogs: SortedMap[Int, Log],
+      logs: Logs,
       statistics: Statistics,
       sSTableFactoryBehavior: ActorRef[SSTableFactoryBehavior.Command],
       sSTableMergeBehavior: ActorRef[SSTableMergeBehavior.Merge])
@@ -104,20 +102,20 @@ object LSMTreeBehavior {
       val statistics = Statistics.initialize()
       val writeAheadLog = WriteAheadLog.initialize(writeAheadLogPath)
       val memTable: MemTable = writeAheadLog.recovery()
+      val logs = Logs.empty
 
       val adapter = context.messageAdapter(Command.Applied)
       statistics.activeSequenceNos.foreach {
         sSTableFactoryBehavior ! SSTableFactoryBehavior.Initialize(_, adapter)
       }
 
-      val lockedLogs = TreeMap[Int, Log]()(Ordering.Int.reverse)
       def initialize(count: Int, state: Initializing): Behavior[Command] =
         if (count < statistics.activeSequenceNos.size) {
           Behaviors.receiveMessagePartial {
             case Command.Applied(res) =>
-              initialize(count + 1,
-                         state.copy(lockedLogs =
-                           lockedLogs.updated(res.sequenceNo, res.sSTableRef)))
+              initialize(
+                count + 1,
+                state.copy(logs = logs.updated(res.sequenceNo, res.sSTableRef)))
             case other: Command.Request =>
               other.replyTo ! UnInitialized
               Behaviors.same
@@ -130,14 +128,14 @@ object LSMTreeBehavior {
               nextSequenceNo = statistics.nextSequenceNo,
               memTable = memTable,
               writeAheadLog = writeAheadLog,
-              lockedLogs = state.lockedLogs,
+              logs = state.logs,
               statistics = statistics,
               sSTableFactoryBehavior = sSTableFactoryBehavior,
               sSTableMergeBehavior = sSTableMergeBehavior
             ))
         }
 
-      initialize(0, Initializing(lockedLogs))
+      initialize(0, Initializing(logs))
     }
 
   def active(state: Initialized)(
@@ -147,7 +145,8 @@ object LSMTreeBehavior {
         case Command.Request.Get(key, replyTo) =>
           state.memTable get key match {
             case SSTable.Got.NotFound =>
-              read(key, state.lockedLogs)(ec, state.context.system.scheduler)
+              state.logs
+                .read(key)(ec, timeout, state.context.system.scheduler)
                 .map(Got)
                 .foreach(replyTo ! _)
             case got =>
@@ -169,14 +168,14 @@ object LSMTreeBehavior {
               adapter)
 
             val newMemTable = MemTable.empty
-            val updatedLockedLogs =
-              state.lockedLogs.updated(state.nextSequenceNo, state.memTable)
+            val updatedLogs =
+              state.logs.updated(state.nextSequenceNo, state.memTable)
             state.writeAheadLog.clear()
 
             active(
               state.copy(nextSequenceNo = state.nextSequenceNo + 2,
                          memTable = newMemTable,
-                         lockedLogs = updatedLockedLogs))
+                         logs = updatedLogs))
           } else {
             Behaviors.same
           }
@@ -188,43 +187,27 @@ object LSMTreeBehavior {
           Behaviors.same
 
         case Command.Applied(res) =>
-          val updatedLockedLogs =
-            state.lockedLogs.updated(res.sequenceNo, res.sSTableRef)
+          val updatedLogs =
+            state.logs.updated(res.sequenceNo, res.sSTableRef)
           val adapter = state.context.messageAdapter(Command.Merged)
-          val mergeSegments = updatedLockedLogs
-            .takeWhile(_._2.isInstanceOf[SSTable])
-            .map[SSTable](_._2.asInstanceOf[SSTable])
-            .toSeq
+          val mergeableSSTables = updatedLogs.mergeableSSTables
 
-          val activeSequenceNos =
-            updatedLockedLogs.values.collect {
-              case SSTableRef(sSTable, _) => sSTable.sequenceNo
-            }.toSeq
-          state.statistics.updateStatistics(state.nextSequenceNo,
-                                            activeSequenceNos)
+          state.statistics.updateStatistics(state.nextSequenceNo, updatedLogs)
 
-          if (mergeSegments.size >= 2) {
+          if (mergeableSSTables.size >= 2) {
             state.sSTableMergeBehavior ! SSTableMergeBehavior.Merge(
               res.sequenceNo + 1,
-              mergeSegments,
+              mergeableSSTables,
               adapter)
           }
-          active(state.copy(lockedLogs = updatedLockedLogs))
+          active(state.copy(logs = updatedLogs))
 
         case Command.Merged(res) =>
-          val mergedLockedLogs =
-            res.removedSequenceNo
-              .foldLeft(state.lockedLogs)(_ removed _)
-              .updated(res.mergedSegment.sSTable.sequenceNo, res.mergedSegment)
+          val updatedLogs =
+            state.logs.merged(res.removedSequenceNo, res.mergedSegment)
 
-          val activeSequenceNos =
-            mergedLockedLogs.values.collect {
-              case SSTableRef(sSTable, _) => sSTable.sequenceNo
-            }.toSeq
-          state.statistics.updateStatistics(state.nextSequenceNo,
-                                            activeSequenceNos)
-
-          active(state.copy(lockedLogs = mergedLockedLogs))
+          state.statistics.updateStatistics(state.nextSequenceNo, updatedLogs)
+          active(state.copy(logs = updatedLogs))
 
       }
       .receiveSignal {
@@ -233,27 +216,5 @@ object LSMTreeBehavior {
           state.writeAheadLog.close()
           Behaviors.same
       }
-
-  private def read(key: String, lockedLogs: SortedMap[Int, Log])(
-      implicit ec: ExecutionContext,
-      scheduler: Scheduler): Future[SSTable.Got] =
-    lockedLogs.values.foldLeft(
-      Future.successful(SSTable.Got.NotFound): Future[SSTable.Got]) {
-      (fValue, log) =>
-        for {
-          value <- fValue
-          res <- value match {
-            case SSTable.Got.NotFound =>
-              log match {
-                case memTable: MemTable =>
-                  Future.successful(memTable get key)
-                case sSTableRef: SSTableRef =>
-                  sSTableRef.routerRef
-                    .ask[SSTable.Got](SSTableBehavior.Get(key, _))
-              }
-            case _ => Future.successful(value)
-          }
-        } yield res
-    }
 
 }
