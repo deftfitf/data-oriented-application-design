@@ -8,11 +8,11 @@ import kvs.lsm.sstable.Logs
 
 case class Statistics private (statisticsFile: File,
                                nextSequenceNo: Int,
-                               activeSequenceNos: Seq[Int]) {
+                               activeSequenceNo: Seq[Int]) {
 
   private def formatStatistics(nextSequenceNo: Int,
-                               activeSequenceNos: Seq[Int]): String =
-    s"$nextSequenceNo ${activeSequenceNos.mkString("[", ",", "]")}"
+                               activeSequenceNo: Seq[Int]): String =
+    s"$nextSequenceNo ${activeSequenceNo.mkString("[", ",", "]")}"
 
   @throws[StatisticsIllegalState]
   def updateStatistics(nextSequenceNo: Int, logs: Logs): Unit = {
@@ -22,7 +22,7 @@ case class Statistics private (statisticsFile: File,
     try {
       val writer = new FileWriter(statisticsFile)
       try {
-        val formatted = formatStatistics(nextSequenceNo, logs.activeSequenceNos)
+        val formatted = formatStatistics(nextSequenceNo, logs.activeSequenceNo)
         writer.write(formatted)
         writer.flush()
       } finally {
@@ -68,13 +68,13 @@ object Statistics {
       try {
         val statistics = reader.readLine().split("\\s+")
         val nextSequenceNo = statistics(0).toInt
-        val activeSequenceNos =
+        val activeSequenceNo =
           statistics(1).tail.init
             .split(",")
             .filter(_.nonEmpty)
             .map(_.toInt)
             .toSeq
-        Statistics(file, nextSequenceNo, activeSequenceNos)
+        Statistics(file, nextSequenceNo, activeSequenceNo)
       } finally {
         reader.close()
       }

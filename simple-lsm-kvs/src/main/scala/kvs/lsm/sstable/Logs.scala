@@ -14,14 +14,14 @@ case class Logs(underlying: SortedMap[Int, Log]) {
   def updated(sequenceNo: Int, log: Log): Logs =
     copy(underlying = underlying.updated(sequenceNo, log))
 
-  def activeSequenceNos: Seq[Int] =
+  def activeSequenceNo: Seq[Int] =
     underlying.values.collect {
       case SSTableRef(sSTable, _) => sSTable.sequenceNo
     }.toSeq
 
-  def merged(removedSequenceNos: Seq[Int], mergedSStableRef: SSTableRef): Logs =
+  def merged(removedSequenceNo: Seq[Int], mergedSStableRef: SSTableRef): Logs =
     copy(
-      underlying = removedSequenceNos
+      underlying = removedSequenceNo
         .foldLeft(underlying)(_ removed _)
         .updated(mergedSStableRef.sSTable.sequenceNo, mergedSStableRef))
 
@@ -47,11 +47,14 @@ case class Logs(underlying: SortedMap[Int, Log]) {
         } yield res
     }
 
-  def mergeableSSTables: Seq[SSTable] =
-    underlying
-      .takeWhile(_._2.isInstanceOf[SSTable])
-      .map[SSTable](_._2.asInstanceOf[SSTable])
+  def mergeableSSTables: Option[Seq[SSTable]] = {
+    val latestSSTables = underlying
+      .takeWhile(_._2.isInstanceOf[SSTableRef])
+      .map[SSTable](_._2.asInstanceOf[SSTableRef].sSTable)
       .toSeq
+    if (latestSSTables.size >= 2) Some(latestSSTables)
+    else None
+  }
 
 }
 

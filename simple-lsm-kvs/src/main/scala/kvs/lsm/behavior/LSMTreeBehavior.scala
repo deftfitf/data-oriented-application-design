@@ -105,12 +105,12 @@ object LSMTreeBehavior {
       val logs = Logs.empty
 
       val adapter = context.messageAdapter(Command.Applied)
-      statistics.activeSequenceNos.foreach {
+      statistics.activeSequenceNo.foreach {
         sSTableFactoryBehavior ! SSTableFactoryBehavior.Initialize(_, adapter)
       }
 
       def initialize(count: Int, state: Initializing): Behavior[Command] =
-        if (count < statistics.activeSequenceNos.size) {
+        if (count < statistics.activeSequenceNo.size) {
           Behaviors.receiveMessagePartial {
             case Command.Applied(res) =>
               initialize(
@@ -190,16 +190,16 @@ object LSMTreeBehavior {
           val updatedLogs =
             state.logs.updated(res.sequenceNo, res.sSTableRef)
           val adapter = state.context.messageAdapter(Command.Merged)
-          val mergeableSSTables = updatedLogs.mergeableSSTables
 
           state.statistics.updateStatistics(state.nextSequenceNo, updatedLogs)
 
-          if (mergeableSSTables.size >= 2) {
-            state.sSTableMergeBehavior ! SSTableMergeBehavior.Merge(
-              res.sequenceNo + 1,
-              mergeableSSTables,
-              adapter)
-          }
+          updatedLogs.mergeableSSTables
+            .foreach {
+              state.sSTableMergeBehavior ! SSTableMergeBehavior.Merge(
+                res.sequenceNo + 1,
+                _,
+                adapter)
+            }
           active(state.copy(logs = updatedLogs))
 
         case Command.Merged(res) =>
