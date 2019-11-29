@@ -4,14 +4,13 @@ import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
 import akka.actor.typed._
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.util.Timeout
-import kvs.lsm.Log
-import kvs.lsm.Log.{MemTable, SSTableRef}
+import kvs.lsm.sstable.Log.{MemTable, SSTableRef}
 import kvs.lsm.behavior.LSMTreeBehavior.Response.{Got, UnInitialized}
 import kvs.lsm.sstable.WriteAheadLog.{
   WriteAheadLogInitializeError,
   WriteAheadLogRecoveryError
 }
-import kvs.lsm.sstable.{SSTable, SSTableFactory, WriteAheadLog}
+import kvs.lsm.sstable.{Log, SSTable, SSTableFactory, WriteAheadLog}
 import kvs.lsm.statistics.Statistics
 import kvs.lsm.statistics.Statistics.StatisticsInitializeError
 

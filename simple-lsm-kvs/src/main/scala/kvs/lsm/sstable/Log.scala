@@ -1,8 +1,7 @@
-package kvs.lsm
+package kvs.lsm.sstable
 
 import akka.actor.typed.ActorRef
 import kvs.lsm.behavior.SSTableBehavior
-import kvs.lsm.sstable.SSTable
 import kvs.lsm.sstable.SSTable.{Got, Value}
 
 import scala.collection.mutable

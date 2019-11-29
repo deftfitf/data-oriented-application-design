@@ -2,7 +2,7 @@ package kvs.lsm.sstable
 
 import java.io.{File, RandomAccessFile}
 
-import kvs.lsm.Log.MemTable
+import kvs.lsm.sstable.Log.MemTable
 import kvs.lsm.sstable.SSTable.Value
 import kvs.lsm.sstable.WriteAheadLog.WriteAheadLogRecoveryError
 

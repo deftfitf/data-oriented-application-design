@@ -2,7 +2,7 @@ package kvs.lsm.behavior
 
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, Behavior, SupervisorStrategy}
-import kvs.lsm.Log.{MemTable, SSTableRef}
+import kvs.lsm.sstable.Log.{MemTable, SSTableRef}
 import kvs.lsm.sstable.SSTableFactory
 
 import scala.concurrent.duration._
