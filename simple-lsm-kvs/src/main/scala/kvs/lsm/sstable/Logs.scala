@@ -56,6 +56,9 @@ case class Logs(underlying: SortedMap[Int, Log]) {
     else None
   }
 
+  def sSTableRefs: Seq[SSTableRef] =
+    underlying.values.collect { case ref: SSTableRef => ref }.toSeq
+
 }
 
 object Logs {

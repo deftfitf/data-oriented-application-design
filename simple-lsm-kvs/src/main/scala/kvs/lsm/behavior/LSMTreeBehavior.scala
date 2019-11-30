@@ -214,6 +214,10 @@ object LSMTreeBehavior {
         case (context, PostStop) =>
           context.log.info("LSMTree stopped.")
           state.writeAheadLog.close()
+          state.logs.sSTableRefs.foreach { ref =>
+            state.sSTableFactoryBehavior ! SSTableFactoryBehavior.Shutdown(
+              ref.routerRef)
+          }
           Behaviors.same
       }
 

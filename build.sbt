@@ -26,6 +26,7 @@ lazy val commonSettings = Seq(
   scalacOptions in Test ++= Seq("-Yrangepos"),
   libraryDependencies ++= Seq(
     "com.typesafe.akka" %% "akka-actor-typed" % "2.6.0",
+    "com.typesafe.akka" %% "akka-actor-testkit-typed" % "2.6.0" % Test,
     "ch.qos.logback" % "logback-classic" % "1.1.3" % Runtime,
     "org.specs2" %% "specs2-core" % "4.8.0" % Test,
     "org.specs2" %% "specs2-mock" % "4.8.0" % Test,
