@@ -1,5 +1,5 @@
-データ指向アプリケーションデザイン テスト実装 ![](https://github.com/deftfitf/data-oriented-application-design/workflows/Scala CI/badge.svg)
+データ指向アプリケーションデザイン テスト実装 ![](https://github.com/deftfitf/data-oriented-application-design/workflows/Scala%20CI/badge.svg)
 ====
 
-* [Simple KVS](simple-kvs/README.md) - 単に末尾追加していくKVS
-* [Simple LSM KVS](simple-lsm-kvs/README.md) - LSM Treeアルゴリズムに基づくKVS
+* [Simple KVS](simple-kvs) - 単に末尾追加していくKVS
+* [Simple LSM KVS](simple-lsm-kvs) - LSM Treeアルゴリズムに基づくKVS
