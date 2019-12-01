@@ -2,7 +2,12 @@ package kvs.lsm
 
 import akka.actor.typed.{ActorSystem, Behavior, DispatcherSelector}
 import akka.actor.typed.scaladsl.Behaviors
-import kvs.lsm.behavior.LSMTreeBehavior
+import akka.util.Timeout
+import kvs.lsm.behavior.{
+  LSMTreeBehavior,
+  SSTableFactoryBehavior,
+  SSTableMergeBehavior
+}
 import kvs.lsm.sstable.SSTableFactory
 
 object ConsoleClient {
@@ -10,17 +15,27 @@ object ConsoleClient {
   val SPARSE_INDEX_PER = 100
   val WRITE_AHEAD_LOG_PATH = "data/simplekvs/lsm/write_ahead_log.txt"
   val SEGMENT_FILE_BATH_PATH = "data/simplekvs/lsm"
+  val STATISTICS_FILE_PATH = "data/simplekvs/lsm/statistics.txt"
   val SSTABLE_READER_POOL_SIZE = 3
 
   def main(args: Array[String]): Unit = {
+    import scala.concurrent.duration._
+    implicit val timeout: Timeout = Timeout(3.seconds)
     val sSTableFactory =
       new SSTableFactory(sparseIndexPer = SPARSE_INDEX_PER,
                          segmentFileBathPath = SEGMENT_FILE_BATH_PATH)
+    val factoryBehavior =
+      SSTableFactoryBehavior(sSTableFactory, SSTABLE_READER_POOL_SIZE)
+    val mergeBehavior =
+      SSTableMergeBehavior(sSTableFactory, SSTABLE_READER_POOL_SIZE)
     val system = ActorSystem(
-      LSMTreeBehavior(sSTableFactory,
-                      readerPoolSize = SSTABLE_READER_POOL_SIZE,
-                      writeAheadLogPath = WRITE_AHEAD_LOG_PATH,
-                      DispatcherSelector.fromConfig("blocking-io-dispatcher")),
+      LSMTreeBehavior(
+        factoryBehavior,
+        mergeBehavior,
+        statisticsFilePath = STATISTICS_FILE_PATH,
+        writeAheadLogPath = WRITE_AHEAD_LOG_PATH,
+        DispatcherSelector.fromConfig("blocking-io-dispatcher")
+      ),
       "lsm-tree"
     )
     sys.addShutdownHook {

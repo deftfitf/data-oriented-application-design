@@ -18,7 +18,7 @@ case class Statistics private (statisticsFile: File,
   def updateStatistics(nextSequenceNo: Int, logs: Logs): Unit = {
     if (!statisticsFile.exists())
       throw StatisticsIllegalState(
-        s"can't find statistics file: $STATISTICS_FILE")
+        s"can't find statistics file: ${statisticsFile.getAbsolutePath}")
     try {
       val writer = new FileWriter(statisticsFile)
       try {
@@ -44,17 +44,14 @@ object Statistics {
   final case class StatisticsInitializeError(message: String)
       extends Throwable(message)
 
-  final private val STATISTICS_FILE =
-    "data/simplekvs/lsm/statistics.txt"
-
   @throws[StatisticsInitializeError]
-  def initialize(): Statistics =
+  def initialize(statisticsFilePath: String): Statistics =
     try {
-      val file = new File(STATISTICS_FILE)
+      val file = new File(statisticsFilePath)
       if (!file.exists()) {
         if (!file.createNewFile())
           throw StatisticsInitializeError(
-            s"can't find, and create statistics file: $STATISTICS_FILE")
+            s"can't find, and create statistics file: $statisticsFilePath")
         val writer = new FileWriter(file)
         try {
           writer.write("0 []")

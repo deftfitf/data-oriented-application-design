@@ -9,12 +9,11 @@ import kvs.lsm.sstable.WriteAheadLog.{
   WriteAheadLogInitializeError,
   WriteAheadLogRecoveryError
 }
-import kvs.lsm.sstable.{Logs, SSTable, SSTableFactory, WriteAheadLog}
+import kvs.lsm.sstable.{Logs, SSTable, WriteAheadLog}
 import kvs.lsm.statistics.Statistics
 import kvs.lsm.statistics.Statistics.StatisticsInitializeError
 
 import scala.concurrent.ExecutionContext
-import scala.concurrent.duration._
 
 object LSMTreeBehavior {
 
@@ -63,43 +62,38 @@ object LSMTreeBehavior {
       sSTableFactoryBehavior: ActorRef[SSTableFactoryBehavior.Command],
       sSTableMergeBehavior: ActorRef[SSTableMergeBehavior.Merge])
 
-  implicit val timeout: Timeout = 3.seconds
-
-  def apply(sSTableFactory: SSTableFactory,
-            readerPoolSize: Int,
+  def apply(factoryBehavior: Behavior[SSTableFactoryBehavior.Command],
+            mergeBehavior: Behavior[SSTableMergeBehavior.Merge],
+            statisticsFilePath: String,
             writeAheadLogPath: String,
-            blockingIoDispatcher: DispatcherSelector): Behavior[Command] =
-    Behaviors
-      .supervise(
-        Behaviors
-          .supervise(
-            Behaviors
-              .supervise(Behaviors
-                .supervise(start(sSTableFactory,
-                                 readerPoolSize,
-                                 writeAheadLogPath,
-                                 blockingIoDispatcher))
-                .onFailure[StatisticsInitializeError](SupervisorStrategy.stop))
-              .onFailure[WriteAheadLogInitializeError](SupervisorStrategy.stop))
-          .onFailure[WriteAheadLogRecoveryError](SupervisorStrategy.stop))
-      .onFailure[Throwable](SupervisorStrategy.restart)
+            blockingIoDispatcher: DispatcherSelector)(
+      implicit timeout: Timeout): Behavior[Command] =
+    start(factoryBehavior,
+          mergeBehavior,
+          statisticsFilePath,
+          writeAheadLogPath,
+          blockingIoDispatcher)
+      .superviseOnFailure[StatisticsInitializeError](SupervisorStrategy.stop)
+      .superviseOnFailure[WriteAheadLogInitializeError](SupervisorStrategy.stop)
+      .superviseOnFailure[WriteAheadLogRecoveryError](SupervisorStrategy.stop)
+      .superviseOnFailure[Throwable](SupervisorStrategy.restart)
 
-  def start(sSTableFactory: SSTableFactory,
-            readerPoolSize: Int,
+  def start(factoryBehavior: Behavior[SSTableFactoryBehavior.Command],
+            mergeBehavior: Behavior[SSTableMergeBehavior.Merge],
+            statisticsFilePath: String,
             writeAheadLogPath: String,
-            blockingIoDispatcher: DispatcherSelector): Behavior[Command] =
+            blockingIoDispatcher: DispatcherSelector)(
+      implicit timeout: Timeout): Behavior[Command] =
     Behaviors.setup[Command] { context =>
       context.log.info("LSMTree initializing...")
       implicit val ec: ExecutionContext =
         context.system.dispatchers.lookup(blockingIoDispatcher)
-      val sSTableFactoryBehavior = context.spawnAnonymous(
-        SSTableFactoryBehavior(sSTableFactory, readerPoolSize),
-        blockingIoDispatcher)
-      val sSTableMergeBehavior = context.spawnAnonymous(
-        SSTableMergeBehavior(sSTableFactory, readerPoolSize),
-        blockingIoDispatcher)
+      val sSTableFactoryBehavior =
+        context.spawnAnonymous(factoryBehavior, blockingIoDispatcher)
+      val sSTableMergeBehavior =
+        context.spawnAnonymous(mergeBehavior, blockingIoDispatcher)
 
-      val statistics = Statistics.initialize()
+      val statistics = Statistics.initialize(statisticsFilePath)
       val writeAheadLog = WriteAheadLog.initialize(writeAheadLogPath)
       val memTable: MemTable = writeAheadLog.recovery()
       val logs = Logs.empty
@@ -115,7 +109,8 @@ object LSMTreeBehavior {
             case Command.Applied(res) =>
               initialize(
                 count + 1,
-                state.copy(logs = logs.updated(res.sequenceNo, res.sSTableRef)))
+                state.copy(
+                  logs = state.logs.updated(res.sequenceNo, res.sSTableRef)))
             case other: Command.Request =>
               other.replyTo ! UnInitialized
               Behaviors.same
@@ -138,8 +133,8 @@ object LSMTreeBehavior {
       initialize(0, Initializing(logs))
     }
 
-  def active(state: Initialized)(
-      implicit ec: ExecutionContext): Behavior[Command] =
+  def active(state: Initialized)(implicit ec: ExecutionContext,
+                                 timeout: Timeout): Behavior[Command] =
     Behaviors
       .receiveMessage[Command] {
         case Command.Request.Get(key, replyTo) =>
