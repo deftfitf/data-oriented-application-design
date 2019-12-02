@@ -33,10 +33,6 @@ class LSMTreeBehaviorSpec extends Specification with Mockito {
       val factoryBehavior =
         Behaviors.monitor(factoryProbe.ref,
                           SSTableFactoryBehavior(sSTableFactory, 1))
-      val mergeProbe = testKit.createTestProbe[SSTableMergeBehavior.Merge]()
-      val mergeBehavior =
-        Behaviors.monitor(mergeProbe.ref,
-                          SSTableMergeBehavior(sSTableFactory, 1))
 
       val sSTable2, sSTable3, sSTable4 = mock[SSTable]
       sSTableFactory.recovery(2) returns sSTable2
@@ -53,7 +49,6 @@ class LSMTreeBehaviorSpec extends Specification with Mockito {
         Behaviors.monitor(
           lsmTreeProbe.ref,
           LSMTreeBehavior.apply(factoryBehavior,
-                                mergeBehavior,
                                 statisticsFilePath,
                                 writeAheadLogPath,
                                 DispatcherSelector.sameAsParent()))

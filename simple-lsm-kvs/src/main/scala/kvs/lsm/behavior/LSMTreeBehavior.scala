@@ -38,7 +38,7 @@ object LSMTreeBehavior {
 
     final case class Applied(res: SSTableFactoryBehavior.Applied)
         extends Command
-    final case class Merged(res: SSTableMergeBehavior.Merged) extends Command
+    final case class Merged(res: SSTableFactoryBehavior.Merged) extends Command
 
   }
 
@@ -59,17 +59,14 @@ object LSMTreeBehavior {
       writeAheadLog: WriteAheadLog,
       logs: Logs,
       statistics: Statistics,
-      sSTableFactoryBehavior: ActorRef[SSTableFactoryBehavior.Command],
-      sSTableMergeBehavior: ActorRef[SSTableMergeBehavior.Merge])
+      sSTableFactoryBehavior: ActorRef[SSTableFactoryBehavior.Command])
 
   def apply(factoryBehavior: Behavior[SSTableFactoryBehavior.Command],
-            mergeBehavior: Behavior[SSTableMergeBehavior.Merge],
             statisticsFilePath: String,
             writeAheadLogPath: String,
             blockingIoDispatcher: DispatcherSelector)(
       implicit timeout: Timeout): Behavior[Command] =
     start(factoryBehavior,
-          mergeBehavior,
           statisticsFilePath,
           writeAheadLogPath,
           blockingIoDispatcher)
@@ -79,7 +76,6 @@ object LSMTreeBehavior {
       .superviseOnFailure[Throwable](SupervisorStrategy.restart)
 
   def start(factoryBehavior: Behavior[SSTableFactoryBehavior.Command],
-            mergeBehavior: Behavior[SSTableMergeBehavior.Merge],
             statisticsFilePath: String,
             writeAheadLogPath: String,
             blockingIoDispatcher: DispatcherSelector)(
@@ -90,8 +86,6 @@ object LSMTreeBehavior {
         context.system.dispatchers.lookup(blockingIoDispatcher)
       val sSTableFactoryBehavior =
         context.spawnAnonymous(factoryBehavior, blockingIoDispatcher)
-      val sSTableMergeBehavior =
-        context.spawnAnonymous(mergeBehavior, blockingIoDispatcher)
 
       val statistics = Statistics.initialize(statisticsFilePath)
       val writeAheadLog = WriteAheadLog.initialize(writeAheadLogPath)
@@ -125,8 +119,7 @@ object LSMTreeBehavior {
               writeAheadLog = writeAheadLog,
               logs = state.logs,
               statistics = statistics,
-              sSTableFactoryBehavior = sSTableFactoryBehavior,
-              sSTableMergeBehavior = sSTableMergeBehavior
+              sSTableFactoryBehavior = sSTableFactoryBehavior
             ))
         }
 
@@ -190,7 +183,7 @@ object LSMTreeBehavior {
 
           updatedLogs.mergeableSSTables
             .foreach {
-              state.sSTableMergeBehavior ! SSTableMergeBehavior.Merge(
+              state.sSTableFactoryBehavior ! SSTableFactoryBehavior.Merge(
                 res.sequenceNo + 1,
                 _,
                 adapter)
@@ -198,6 +191,10 @@ object LSMTreeBehavior {
           active(state.copy(logs = updatedLogs))
 
         case Command.Merged(res) =>
+          state.logs
+            .refs(res.removedSequenceNo)
+            .foreach(ref =>
+              state.sSTableFactoryBehavior ! SSTableFactoryBehavior.Stop(ref))
           val updatedLogs =
             state.logs.merged(res.removedSequenceNo, res.mergedSegment)
 
@@ -210,7 +207,7 @@ object LSMTreeBehavior {
           context.log.info("LSMTree stopped.")
           state.writeAheadLog.close()
           state.logs.sSTableRefs.foreach { ref =>
-            state.sSTableFactoryBehavior ! SSTableFactoryBehavior.Shutdown(
+            state.sSTableFactoryBehavior ! SSTableFactoryBehavior.Stop(
               ref.routerRef)
           }
           Behaviors.same

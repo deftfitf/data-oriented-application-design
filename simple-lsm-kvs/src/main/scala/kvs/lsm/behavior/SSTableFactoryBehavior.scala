@@ -3,7 +3,7 @@ package kvs.lsm.behavior
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ActorRef, Behavior, SupervisorStrategy}
 import kvs.lsm.sstable.Log.{MemTable, SSTableRef}
-import kvs.lsm.sstable.SSTableFactory
+import kvs.lsm.sstable.{SSTable, SSTableFactory, SSTableMergeIterator}
 
 import scala.concurrent.duration._
 
@@ -16,8 +16,14 @@ object SSTableFactoryBehavior {
       extends Command
   final case class Initialize(sequenceNo: Int, replyTo: ActorRef[Applied])
       extends Command
-  final case class Shutdown(actorRef: ActorRef[SSTableBehavior.Get])
+  final case class Stop(actorRef: ActorRef[SSTableBehavior.Get]) extends Command
+  final case class Merge(newSequenceNo: Int,
+                         mergeSSTables: Seq[SSTable],
+                         replyTo: ActorRef[Merged])
       extends Command
+
+  final case class Merged(mergedSegment: SSTableRef,
+                          removedSequenceNo: Seq[Int])
 
   final case class Applied(sequenceNo: Int, sSTableRef: SSTableRef)
 
@@ -46,7 +52,16 @@ object SSTableFactoryBehavior {
 
           replyTo ! Applied(sequenceNo, SSTableRef(sSTable, sSTableRef))
           Behaviors.same
-        case Shutdown(actorRef) =>
+        case Merge(newSequenceNo, mergeSSTables, replyTo) =>
+          val iterator = SSTableMergeIterator(mergeSSTables)
+          val mergedSSTable = sSTableFactory.apply(newSequenceNo, iterator)
+          val sSTableRef = context.spawnAnonymous(
+            SSTableBehavior.pool(mergedSSTable, readerPoolSize))
+
+          replyTo ! Merged(SSTableRef(mergedSSTable, sSTableRef),
+                           mergeSSTables.map(_.sequenceNo))
+          Behaviors.same
+        case Stop(actorRef) =>
           context.stop(actorRef)
           Behaviors.same
       }

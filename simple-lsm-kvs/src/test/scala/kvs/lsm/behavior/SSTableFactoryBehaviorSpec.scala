@@ -166,6 +166,58 @@ class SSTableFactoryBehaviorSpec extends Specification {
 
     }
 
+    "#Merge" should {
+
+      trait context extends Scope with After {
+        val sequenceNo = 12
+        val testResourceDirectory =
+          classLoader.getResource("test/sstable").getPath
+        val testKit = ActorTestKit()
+        val sSTableFactory = new SSTableFactory(3, testResourceDirectory)
+        val mergeBehavior =
+          testKit.spawn(SSTableFactoryBehavior(sSTableFactory, 3))
+
+        val probe = testKit.createTestProbe[SSTableFactoryBehavior.Merged]()
+
+        override def after: Any = {
+          testKit.shutdownTestKit()
+          val file = new File(
+            classLoader
+              .getResource("test/sstable")
+              .getPath
+              .concat(s"/segment_file_$sequenceNo.txt"))
+          if (file.exists())
+            file.delete()
+        }
+      }
+
+      "return Merged" in new context {
+        val sSTable2 = sSTableFactory.recovery(2)
+        val sSTable3 = sSTableFactory.recovery(3)
+        val sSTable4 = sSTableFactory.recovery(4)
+
+        mergeBehavior ! SSTableFactoryBehavior.Merge(sequenceNo,
+                                                     Seq(sSTable2,
+                                                         sSTable3,
+                                                         sSTable4),
+                                                     probe.ref)
+        val merged = probe.receiveMessage()
+        merged.removedSequenceNo === Seq(2, 3, 4)
+
+        val getProbe = testKit.createTestProbe[SSTable.Got]()
+        merged.mergedSegment.routerRef ! SSTableBehavior.Get("foo",
+                                                             getProbe.ref)
+        getProbe.receiveMessage() === SSTable.Got.Found("fooValue")
+        merged.mergedSegment.routerRef ! SSTableBehavior.Get("gar",
+                                                             getProbe.ref)
+        getProbe.receiveMessage() === SSTable.Got.NotFound
+        merged.mergedSegment.routerRef ! SSTableBehavior.Get("key1",
+                                                             getProbe.ref)
+        getProbe.receiveMessage() === SSTable.Got.Deleted
+      }
+
+    }
+
   }
 
 }

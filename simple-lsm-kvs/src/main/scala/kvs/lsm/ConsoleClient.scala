@@ -3,11 +3,7 @@ package kvs.lsm
 import akka.actor.typed.{ActorSystem, Behavior, DispatcherSelector}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.util.Timeout
-import kvs.lsm.behavior.{
-  LSMTreeBehavior,
-  SSTableFactoryBehavior,
-  SSTableMergeBehavior
-}
+import kvs.lsm.behavior.{LSMTreeBehavior, SSTableFactoryBehavior}
 import kvs.lsm.sstable.SSTableFactory
 
 object ConsoleClient {
@@ -26,12 +22,9 @@ object ConsoleClient {
                          segmentFileBathPath = SEGMENT_FILE_BATH_PATH)
     val factoryBehavior =
       SSTableFactoryBehavior(sSTableFactory, SSTABLE_READER_POOL_SIZE)
-    val mergeBehavior =
-      SSTableMergeBehavior(sSTableFactory, SSTABLE_READER_POOL_SIZE)
     val system = ActorSystem(
       LSMTreeBehavior(
         factoryBehavior,
-        mergeBehavior,
         statisticsFilePath = STATISTICS_FILE_PATH,
         writeAheadLogPath = WRITE_AHEAD_LOG_PATH,
         DispatcherSelector.fromConfig("blocking-io-dispatcher")

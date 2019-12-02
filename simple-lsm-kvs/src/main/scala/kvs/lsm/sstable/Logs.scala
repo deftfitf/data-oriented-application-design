@@ -1,6 +1,6 @@
 package kvs.lsm.sstable
 
-import akka.actor.typed.Scheduler
+import akka.actor.typed.{ActorRef, Scheduler}
 import kvs.lsm.behavior.SSTableBehavior
 import kvs.lsm.sstable.Log.{MemTable, SSTableRef}
 
@@ -18,6 +18,11 @@ case class Logs(underlying: SortedMap[Int, Log]) {
     underlying.values.collect {
       case SSTableRef(sSTable, _) => sSTable.sequenceNo
     }.toSeq
+
+  def refs(sequenceNo: Seq[Int]): Seq[ActorRef[SSTableBehavior.Get]] =
+    sSTableRefs
+      .filter(ref => sequenceNo.contains(ref.sSTable.sequenceNo))
+      .map(_.routerRef)
 
   def merged(removedSequenceNo: Seq[Int], mergedSStableRef: SSTableRef): Logs =
     copy(
